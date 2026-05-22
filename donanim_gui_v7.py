@@ -191,15 +191,25 @@ def get_system_info():
     return dedupe_items(items)
 
 
-def get_cpu_info():
+def get_gpu_info():
     items = []
     c = wmi.WMI()
+    registry_vram = get_gpu_vram_from_registry()
 
-    for cpu in c.Win32_Processor():
-        name = clean_text(cpu.Name)
-        processor_id = getattr(cpu, "ProcessorId", None)
+    for gpu in c.Win32_VideoController():
+        name = clean_text(gpu.Name)
+        vram_gb = bytes_to_gb(gpu.AdapterRAM)
 
-        line = append_serial(name, processor_id)
+        for reg_name, reg_vram in registry_vram.items():
+            if name.lower() in reg_name or reg_name in name.lower():
+                vram_gb = reg_vram
+                break
+
+        if vram_gb:
+            line = f"{name} {vram_gb} GB VRAM"
+        else:
+            line = f"{name} VRAM bilgisi okunamadı"
+
         items.append(line)
 
     return dedupe_items(items)
@@ -376,12 +386,8 @@ def get_battery_info():
         percent = clean_text(getattr(battery, "EstimatedChargeRemaining", None))
         status_code = getattr(battery, "BatteryStatus", None)
         status = battery_status_name(status_code)
-        device_id = getattr(battery, "DeviceID", None)
 
-        line = f"Batarya adı: {name}"
-        line = append_serial(line, device_id)
-
-        items.append(line)
+        items.append(f"Batarya adı: {name}")
         items.append(f"Batarya durumu: {status}")
         items.append(f"Şarj yüzdesi: %{percent}")
 
@@ -567,12 +573,13 @@ class HardwareApp(ctk.CTk):
 
     def load_data_background(self):
         pythoncom.CoInitialize()
-
+    
         try:
             data = self.collect_all_data()
             self.after(0, lambda: self.update_ui_with_data(data))
         except Exception as error:
-            self.after(0, lambda: self.show_error(str(error)))
+            error_message = str(error)
+            self.after(0, lambda: self.show_error(error_message))
         finally:
             pythoncom.CoUninitialize()
 
