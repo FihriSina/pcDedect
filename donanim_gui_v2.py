@@ -1,0 +1,435 @@
+import customtkinter as ctk
+import wmi
+import subprocess
+import json
+import winreg
+import threading
+from datetime import datetime
+
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+
+c = wmi.WMI()
+
+
+def bytes_to_gb(value):
+    try:
+        return round(int(value) / (1024 ** 3))
+    except:
+        return None
+
+
+def clean_text(value):
+    if value is None:
+        return "Bilinmiyor"
+    return str(value).strip()
+
+
+def memory_type_name(code):
+    types = {
+        20: "DDR",
+        21: "DDR2",
+        24: "DDR3",
+        26: "DDR4",
+        34: "DDR5"
+    }
+    return types.get(code, "RAM")
+
+
+def get_gpu_vram_from_registry():
+    results = {}
+
+    try:
+        base_path = r"SYSTEM\CurrentControlSet\Control\Video"
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base_path) as video_key:
+            for i in range(winreg.QueryInfoKey(video_key)[0]):
+                guid = winreg.EnumKey(video_key, i)
+
+                for sub in ["0000", "0001"]:
+                    try:
+                        path = base_path + "\\" + guid + "\\" + sub
+                        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path) as adapter_key:
+                            try:
+                                name, _ = winreg.QueryValueEx(adapter_key, "DriverDesc")
+                                memory, _ = winreg.QueryValueEx(adapter_key, "HardwareInformation.qwMemorySize")
+
+                                gb = bytes_to_gb(memory)
+                                if name and gb:
+                                    results[name.lower()] = gb
+                            except:
+                                pass
+                    except:
+                        pass
+    except:
+        pass
+
+    return results
+
+
+def get_cpu_info():
+    items = []
+    for cpu in c.Win32_Processor():
+        items.append(clean_text(cpu.Name))
+    return items
+
+
+def get_motherboard_info():
+    items = []
+    for board in c.Win32_BaseBoard():
+        manufacturer = clean_text(board.Manufacturer)
+        product = clean_text(board.Product)
+        items.append(f"{manufacturer} {product}")
+    return items
+
+
+def get_gpu_info():
+    items = []
+    registry_vram = get_gpu_vram_from_registry()
+
+    for gpu in c.Win32_VideoController():
+        name = clean_text(gpu.Name)
+
+        vram_gb = bytes_to_gb(gpu.AdapterRAM)
+
+        for reg_name, reg_vram in registry_vram.items():
+            if name.lower() in reg_name or reg_name in name.lower():
+                vram_gb = reg_vram
+                break
+
+        if vram_gb:
+            items.append(f"{name} {vram_gb} GB VRAM")
+        else:
+            items.append(f"{name} VRAM bilgisi okunamadı")
+
+    return items
+
+
+def get_ram_info():
+    items = []
+
+    for ram in c.Win32_PhysicalMemory():
+        manufacturer = clean_text(ram.Manufacturer)
+        part_number = clean_text(ram.PartNumber)
+        size = bytes_to_gb(ram.Capacity)
+
+        ram_type = memory_type_name(getattr(ram, "SMBIOSMemoryType", None))
+
+        speed = getattr(ram, "ConfiguredClockSpeed", None)
+        if not speed:
+            speed = getattr(ram, "Speed", None)
+
+        line = f"{manufacturer} {part_number} {ram_type}"
+
+        if speed:
+            line += f" {speed} MHz"
+
+        if size:
+            line += f" {size} GB"
+
+        items.append(line)
+
+    return items
+
+
+def run_powershell_json(command):
+    try:
+        completed = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore"
+        )
+
+        output = completed.stdout.strip()
+
+        if not output:
+            return []
+
+        data = json.loads(output)
+
+        if isinstance(data, dict):
+            return [data]
+
+        return data
+
+    except:
+        return []
+
+
+def get_storage_info():
+    ssd_items = []
+    hdd_items = []
+    unknown_items = []
+
+    command = """
+    Get-PhysicalDisk |
+    Select-Object FriendlyName, MediaType, Size |
+    ConvertTo-Json
+    """
+
+    disks = run_powershell_json(command)
+
+    if disks:
+        for disk in disks:
+            name = clean_text(disk.get("FriendlyName"))
+            media_type = clean_text(disk.get("MediaType"))
+            size = bytes_to_gb(disk.get("Size"))
+
+            line = f"{name}"
+            if size:
+                line += f" {size} GB"
+
+            if media_type.lower() == "ssd":
+                ssd_items.append(line)
+            elif media_type.lower() == "hdd":
+                hdd_items.append(line)
+            else:
+                unknown_items.append(f"{line} Tür: {media_type}")
+
+    else:
+        for disk in c.Win32_DiskDrive():
+            name = clean_text(disk.Model)
+            size = bytes_to_gb(disk.Size)
+            media_type = clean_text(disk.MediaType)
+
+            line = f"{name}"
+            if size:
+                line += f" {size} GB"
+
+            unknown_items.append(f"{line} Tür: {media_type}")
+
+    return ssd_items, hdd_items, unknown_items
+
+
+def get_battery_info():
+    items = []
+
+    for battery in c.Win32_Battery():
+        name = clean_text(battery.Name)
+        status = clean_text(battery.BatteryStatus)
+        items.append(f"{name} Durum kodu: {status}")
+
+    if not items:
+        items.append("Batarya bilgisi bulunamadı. Masaüstü bilgisayarlarda normaldir.")
+
+    return items
+
+def refresh_data(self):
+    self.refresh_button.configure(
+        text="Yenileniyor...",
+        state="disabled"
+    )
+
+    self.status_label.configure(
+        text="Bilgiler okunuyor..."
+    )
+
+    self.clear_content()
+
+    loading_label = ctk.CTkLabel(
+        self.content,
+        text="Donanım bilgileri yenileniyor...",
+        font=("Segoe UI", 18, "bold")
+    )
+    loading_label.pack(pady=80)
+
+    thread = threading.Thread(
+        target=self.load_data_background,
+        daemon=True
+    )
+    thread.start()
+
+
+def load_data_background(self):
+    data = self.collect_all_data()
+
+    self.after(
+        0,
+        lambda: self.update_ui_with_data(data)
+    )
+
+
+def collect_all_data(self):
+    ssd_items, hdd_items, unknown_storage = get_storage_info()
+
+    return {
+        "cpu": get_cpu_info(),
+        "motherboard": get_motherboard_info(),
+        "gpu": get_gpu_info(),
+        "ram": get_ram_info(),
+        "ssd": ssd_items,
+        "hdd": hdd_items,
+        "unknown_storage": unknown_storage,
+        "battery": get_battery_info()
+    }
+
+
+def update_ui_with_data(self, data):
+    self.clear_content()
+
+    self.add_card("İşlemci", data["cpu"])
+    self.add_card("Anakart", data["motherboard"])
+    self.add_card("Ekran Kartı", data["gpu"])
+    self.add_card("RAM", data["ram"])
+    self.add_card("Depolama / SSD", data["ssd"])
+    self.add_card("Depolama / HDD", data["hdd"])
+
+    if data["unknown_storage"]:
+        self.add_card("Depolama / Türü Belirsiz", data["unknown_storage"])
+
+    self.add_card("Güç / Batarya", data["battery"])
+    self.add_card(
+        "Güç / PSU",
+        [
+            "PSU marka/model bilgisi standart masaüstü sistemlerde yazılımsal olarak okunamaz.",
+            "Bunun nedeni güç kaynağının marka/model bilgisini anakarta veya Windows'a bildirmemesidir.",
+            "İstisna: Corsair iCUE, NZXT CAM, ASUS Armoury Crate gibi yazılımlarla çalışan dijital/akıllı PSU modelleri."
+        ]
+    )
+
+    now = datetime.now().strftime("%H:%M:%S")
+
+    self.status_label.configure(
+        text=f"Son güncelleme: {now}"
+    )
+
+    self.refresh_button.configure(
+        text="Bilgileri Yenile",
+        state="normal"
+    )
+
+class HardwareApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+
+        self.title("Donanım Bilgi Uygulaması")
+        self.geometry("1000x720")
+        self.minsize(850, 600)
+        self.resizable(True, True)
+
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        self.sidebar = ctk.CTkFrame(self, width=220, corner_radius=0)
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+
+        self.main = ctk.CTkFrame(self, corner_radius=0)
+        self.main.grid(row=0, column=1, sticky="nsew")
+        self.main.grid_rowconfigure(1, weight=1)
+        self.main.grid_columnconfigure(0, weight=1)
+
+        self.title_label = ctk.CTkLabel(
+            self.sidebar,
+            text="Sistem Bilgisi",
+            font=("Segoe UI", 24, "bold")
+        )
+        self.title_label.pack(pady=(30, 10), padx=20)
+
+        self.subtitle_label = ctk.CTkLabel(
+            self.sidebar,
+            text="Donanım envanteri",
+            font=("Segoe UI", 13),
+            text_color="gray"
+        )
+        self.subtitle_label.pack(pady=(0, 30), padx=20)
+
+        self.refresh_button = ctk.CTkButton(
+            self.sidebar,
+            text="Bilgileri Yenile",
+            command=self.refresh_data
+        )
+        self.refresh_button.pack(pady=10, padx=20, fill="x")
+        
+        self.status_label = ctk.CTkLabel(
+            self.sidebar,
+            text="Hazır",
+            font=("Segoe UI", 12),
+            text_color="gray"
+        )
+        self.status_label.pack(pady=(5, 10), padx=20)
+
+        self.note = ctk.CTkLabel(
+            self.sidebar,
+            text="Not: Metin alanlarındaki bilgileri fareyle seçip Ctrl+C ile kopyalayabilirsin.",
+            font=("Segoe UI", 12),
+            text_color="gray",
+            wraplength=170,
+            justify="left"
+        )
+        self.note.pack(pady=30, padx=20)
+
+        self.header = ctk.CTkLabel(
+            self.main,
+            text="Bilgisayar Donanım Bilgileri",
+            font=("Segoe UI", 28, "bold"),
+            anchor="w"
+        )
+        self.header.grid(row=0, column=0, sticky="ew", padx=25, pady=(25, 10))
+
+        self.content = ctk.CTkScrollableFrame(self.main)
+        self.content.grid(row=1, column=0, sticky="nsew", padx=25, pady=(0, 25))
+        self.content.grid_columnconfigure(0, weight=1)
+
+        self.refresh_data()
+
+    def clear_content(self):
+        for widget in self.content.winfo_children():
+            widget.destroy()
+
+    def add_card(self, title, items):
+        card = ctk.CTkFrame(self.content, corner_radius=18)
+        card.pack(fill="x", padx=5, pady=10)
+
+        title_label = ctk.CTkLabel(
+            card,
+            text=title,
+            font=("Segoe UI", 18, "bold"),
+            anchor="w"
+        )
+        title_label.pack(fill="x", padx=18, pady=(15, 5))
+
+        textbox = ctk.CTkTextbox(
+            card,
+            height=max(70, len(items) * 36),
+            font=("Consolas", 14),
+            wrap="word"
+        )
+        textbox.pack(fill="x", expand=True, padx=18, pady=(5, 18))
+
+        if items:
+            textbox.insert("1.0", "\n".join(items))
+        else:
+            textbox.insert("1.0", "Bilgi bulunamadı.")
+
+        textbox.configure(state="disabled")
+
+    def load_data(self):
+        self.clear_content()
+
+        ssd_items, hdd_items, unknown_storage = get_storage_info()
+
+        self.add_card("İşlemci", get_cpu_info())
+        self.add_card("Anakart", get_motherboard_info())
+        self.add_card("Ekran Kartı", get_gpu_info())
+        self.add_card("RAM", get_ram_info())
+        self.add_card("Depolama / SSD", ssd_items)
+        self.add_card("Depolama / HDD", hdd_items)
+
+        if unknown_storage:
+            self.add_card("Depolama / Türü Belirsiz", unknown_storage)
+
+        self.add_card("Güç / Batarya", get_battery_info())
+        self.add_card(
+            "Güç / PSU",
+            [
+                "PSU marka/model bilgisi standart masaüstü sistemlerde yazılımsal olarak okunamaz.",
+                "Bunun nedeni güç kaynağının marka/model bilgisini anakarta veya Windows'a bildirmemesidir.",
+                "İstisna: Corsair iCUE, NZXT CAM, ASUS Armoury Crate gibi yazılımlarla çalışan dijital/akıllı PSU modelleri."
+            ]
+        )
+
+
+if __name__ == "__main__":
+    app = HardwareApp()
+    app.mainloop()
