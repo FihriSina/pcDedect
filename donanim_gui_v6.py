@@ -25,13 +25,7 @@ def clean_text(value):
 
 
 def memory_type_name(code):
-    types = {
-        20: "DDR",
-        21: "DDR2",
-        24: "DDR3",
-        26: "DDR4",
-        34: "DDR5"
-    }
+    types = {20: "DDR", 21: "DDR2", 24: "DDR3", 26: "DDR4", 34: "DDR5"}
     return types.get(code, "RAM")
 
 
@@ -137,7 +131,6 @@ def get_ram_info():
         manufacturer = clean_text(ram.Manufacturer)
         part_number = clean_text(ram.PartNumber)
         size = bytes_to_gb(ram.Capacity)
-
         ram_type = memory_type_name(getattr(ram, "SMBIOSMemoryType", None))
 
         speed = getattr(ram, "ConfiguredClockSpeed", None)
@@ -262,9 +255,7 @@ def get_lhm_power_sensor_info():
 
     try:
         lhm = wmi.WMI(namespace=r"root\LibreHardwareMonitor")
-
         sensors = lhm.Sensor()
-
         wanted_types = ["Voltage", "Current", "Power"]
 
         for sensor in sensors:
@@ -341,15 +332,6 @@ class HardwareApp(ctk.CTk):
         )
         self.refresh_button.pack(pady=10, padx=20, fill="x")
 
-        self.theme_button = ctk.CTkButton(
-            self.sidebar,
-            text="Tema: Sistem",
-            command=self.toggle_theme
-        )
-        self.theme_button.pack(pady=10, padx=20, fill="x")
-
-        self.current_theme = "system"
-
         self.status_label = ctk.CTkLabel(
             self.sidebar,
             text="Hazır",
@@ -369,13 +351,39 @@ class HardwareApp(ctk.CTk):
         )
         self.note.pack(pady=30, padx=20)
 
+        self.top_bar = ctk.CTkFrame(self.main, fg_color="transparent")
+        self.top_bar.grid(row=0, column=0, sticky="ew", padx=25, pady=(20, 5))
+        self.top_bar.grid_columnconfigure(0, weight=1)
+
         self.header = ctk.CTkLabel(
-            self.main,
+            self.top_bar,
             text="Bilgisayar Donanım Bilgileri",
             font=("Segoe UI", 28, "bold"),
             anchor="w"
         )
-        self.header.grid(row=0, column=0, sticky="ew", padx=25, pady=(25, 10))
+        self.header.grid(row=0, column=0, sticky="w")
+
+        self.light_button = ctk.CTkButton(
+            self.top_bar,
+            text="☀",
+            width=38,
+            height=38,
+            corner_radius=12,
+            font=("Segoe UI", 18),
+            command=lambda: self.set_theme("light")
+        )
+        self.light_button.grid(row=0, column=1, padx=(8, 4))
+
+        self.dark_button = ctk.CTkButton(
+            self.top_bar,
+            text="🌙",
+            width=38,
+            height=38,
+            corner_radius=12,
+            font=("Segoe UI", 18),
+            command=lambda: self.set_theme("dark")
+        )
+        self.dark_button.grid(row=0, column=2, padx=(4, 0))
 
         self.content = ctk.CTkScrollableFrame(self.main)
         self.content.grid(row=1, column=0, sticky="nsew", padx=25, pady=(0, 25))
@@ -383,19 +391,8 @@ class HardwareApp(ctk.CTk):
 
         self.refresh_data()
 
-    def toggle_theme(self):
-        if self.current_theme == "system":
-            self.current_theme = "light"
-            ctk.set_appearance_mode("light")
-            self.theme_button.configure(text="Tema: Açık")
-        elif self.current_theme == "light":
-            self.current_theme = "dark"
-            ctk.set_appearance_mode("dark")
-            self.theme_button.configure(text="Tema: Kapalı")
-        else:
-            self.current_theme = "system"
-            ctk.set_appearance_mode("system")
-            self.theme_button.configure(text="Tema: Sistem")
+    def set_theme(self, mode):
+        ctk.set_appearance_mode(mode)
 
     def refresh_data(self):
         self.refresh_button.configure(
@@ -409,7 +406,10 @@ class HardwareApp(ctk.CTk):
 
         self.clear_content()
 
-        self.content._parent_canvas.yview_moveto(0)
+        try:
+            self.content._parent_canvas.yview_moveto(0)
+        except:
+            pass
 
         loading_label = ctk.CTkLabel(
             self.content,
