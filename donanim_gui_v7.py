@@ -11,6 +11,26 @@ ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("blue")
 
 
+INVALID_VALUES = {
+    "",
+    "none",
+    "null",
+    "unknown",
+    "bilinmiyor",
+    "to be filled by o.e.m.",
+    "to be filled by oem",
+    "system serial number",
+    "default string",
+    "not specified",
+    "not available",
+    "n/a",
+    "0",
+    "00000000",
+    "0000000000",
+    "ffffffff",
+}
+
+
 def bytes_to_gb(value):
     try:
         return round(int(value) / (1024 ** 3))
@@ -22,6 +42,47 @@ def clean_text(value):
     if value is None:
         return "Bilinmiyor"
     return str(value).strip()
+
+
+def is_valid_value(value):
+    if value is None:
+        return False
+
+    text = str(value).strip()
+    normalized = text.lower()
+
+    if normalized in INVALID_VALUES:
+        return False
+
+    if len(text) < 2:
+        return False
+
+    return True
+
+
+def append_serial(line, serial):
+    if not is_valid_value(serial):
+        return line
+
+    serial = clean_text(serial)
+
+    if serial.lower() in line.lower():
+        return line
+
+    return f"{line} Seri No: {serial}"
+
+
+def dedupe_items(items):
+    seen = set()
+    result = []
+
+    for item in items:
+        key = item.strip().lower()
+        if key not in seen:
+            seen.add(key)
+            result.append(item)
+
+    return result
 
 
 def memory_type_name(code):
@@ -43,6 +104,7 @@ def battery_status_name(code):
         10: "Bilinmiyor",
         11: "Kısmen şarj oldu"
     }
+
     try:
         return statuses.get(int(code), f"Bilinmeyen durum kodu: {code}")
     except:
@@ -54,6 +116,7 @@ def get_gpu_vram_from_registry():
 
     try:
         base_path = r"SYSTEM\CurrentControlSet\Control\Video"
+
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base_path) as video_key:
             for i in range(winreg.QueryInfoKey(video_key)[0]):
                 guid = winreg.EnumKey(video_key, i)
@@ -61,6 +124,7 @@ def get_gpu_vram_from_registry():
                 for sub in ["0000", "0001"]:
                     try:
                         path = base_path + "\\" + guid + "\\" + sub
+
                         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path) as adapter_key:
                             name, _ = winreg.QueryValueEx(adapter_key, "DriverDesc")
                             memory, _ = winreg.QueryValueEx(
@@ -69,14 +133,62 @@ def get_gpu_vram_from_registry():
                             )
 
                             gb = bytes_to_gb(memory)
+
                             if name and gb:
                                 results[name.lower()] = gb
+
                     except:
                         pass
+
     except:
         pass
 
     return results
+
+
+def get_system_info():
+    items = []
+    c = wmi.WMI()
+
+    try:
+        for system in c.Win32_ComputerSystemProduct():
+            vendor = clean_text(getattr(system, "Vendor", None))
+            name = clean_text(getattr(system, "Name", None))
+            version = clean_text(getattr(system, "Version", None))
+            serial = getattr(system, "IdentifyingNumber", None)
+
+            line = f"{vendor} {name}"
+
+            if is_valid_value(version) and version.lower() not in line.lower():
+                line += f" {version}"
+
+            line = append_serial(line, serial)
+            items.append(line)
+
+    except:
+        pass
+
+    try:
+        for bios in c.Win32_BIOS():
+            bios_name = clean_text(getattr(bios, "Name", None))
+            bios_version = clean_text(getattr(bios, "SMBIOSBIOSVersion", None))
+            bios_serial = getattr(bios, "SerialNumber", None)
+
+            line = f"BIOS: {bios_name}"
+
+            if is_valid_value(bios_version) and bios_version.lower() not in line.lower():
+                line += f" {bios_version}"
+
+            line = append_serial(line, bios_serial)
+            items.append(line)
+
+    except:
+        pass
+
+    if not items:
+        items.append("Bilgi bulunamadı.")
+
+    return dedupe_items(items)
 
 
 def get_cpu_info():
@@ -84,9 +196,13 @@ def get_cpu_info():
     c = wmi.WMI()
 
     for cpu in c.Win32_Processor():
-        items.append(clean_text(cpu.Name))
+        name = clean_text(cpu.Name)
+        processor_id = getattr(cpu, "ProcessorId", None)
 
-    return items
+        line = append_serial(name, processor_id)
+        items.append(line)
+
+    return dedupe_items(items)
 
 
 def get_motherboard_info():
@@ -96,9 +212,14 @@ def get_motherboard_info():
     for board in c.Win32_BaseBoard():
         manufacturer = clean_text(board.Manufacturer)
         product = clean_text(board.Product)
-        items.append(f"{manufacturer} {product}")
+        serial = getattr(board, "SerialNumber", None)
 
-    return items
+        line = f"{manufacturer} {product}"
+        line = append_serial(line, serial)
+
+        items.append(line)
+
+    return dedupe_items(items)
 
 
 def get_gpu_info():
@@ -116,11 +237,18 @@ def get_gpu_info():
                 break
 
         if vram_gb:
-            items.append(f"{name} {vram_gb} GB VRAM")
+            line = f"{name} {vram_gb} GB VRAM"
         else:
-            items.append(f"{name} VRAM bilgisi okunamadı")
+            line = f"{name} VRAM bilgisi okunamadı"
 
-    return items
+        pnp_id = getattr(gpu, "PNPDeviceID", None)
+
+        if is_valid_value(pnp_id):
+            line = append_serial(line, pnp_id)
+
+        items.append(line)
+
+    return dedupe_items(items)
 
 
 def get_ram_info():
@@ -130,6 +258,7 @@ def get_ram_info():
     for ram in c.Win32_PhysicalMemory():
         manufacturer = clean_text(ram.Manufacturer)
         part_number = clean_text(ram.PartNumber)
+        serial = getattr(ram, "SerialNumber", None)
         size = bytes_to_gb(ram.Capacity)
         ram_type = memory_type_name(getattr(ram, "SMBIOSMemoryType", None))
 
@@ -145,9 +274,10 @@ def get_ram_info():
         if size:
             line += f" {size} GB"
 
+        line = append_serial(line, serial)
         items.append(line)
 
-    return items
+    return dedupe_items(items)
 
 
 def run_powershell_json(command):
@@ -190,7 +320,7 @@ def get_storage_info():
 
     command = """
     Get-PhysicalDisk |
-    Select-Object FriendlyName, MediaType, Size |
+    Select-Object FriendlyName, MediaType, Size, SerialNumber |
     ConvertTo-Json
     """
 
@@ -200,11 +330,15 @@ def get_storage_info():
         for disk in disks:
             name = clean_text(disk.get("FriendlyName"))
             media_type = clean_text(disk.get("MediaType"))
+            serial = disk.get("SerialNumber")
             size = bytes_to_gb(disk.get("Size"))
 
             line = f"{name}"
+
             if size:
                 line += f" {size} GB"
+
+            line = append_serial(line, serial)
 
             if media_type.lower() == "ssd":
                 ssd_items.append(line)
@@ -220,14 +354,17 @@ def get_storage_info():
             name = clean_text(disk.Model)
             size = bytes_to_gb(disk.Size)
             media_type = clean_text(disk.MediaType)
+            serial = getattr(disk, "SerialNumber", None)
 
             line = f"{name}"
+
             if size:
                 line += f" {size} GB"
 
+            line = append_serial(line, serial)
             unknown_items.append(f"{line} Tür: {media_type}")
 
-    return ssd_items, hdd_items, unknown_items
+    return dedupe_items(ssd_items), dedupe_items(hdd_items), dedupe_items(unknown_items)
 
 
 def get_battery_info():
@@ -239,15 +376,19 @@ def get_battery_info():
         percent = clean_text(getattr(battery, "EstimatedChargeRemaining", None))
         status_code = getattr(battery, "BatteryStatus", None)
         status = battery_status_name(status_code)
+        device_id = getattr(battery, "DeviceID", None)
 
-        items.append(f"Batarya adı: {name}")
+        line = f"Batarya adı: {name}"
+        line = append_serial(line, device_id)
+
+        items.append(line)
         items.append(f"Batarya durumu: {status}")
         items.append(f"Şarj yüzdesi: %{percent}")
 
     if not items:
         items.append("Batarya bilgisi bulunamadı. Masaüstü bilgisayarlarda normaldir.")
 
-    return items
+    return dedupe_items(items)
 
 
 def get_lhm_power_sensor_info():
@@ -287,7 +428,7 @@ def get_lhm_power_sensor_info():
         items.append("PSU marka, model ve watt bilgisi yazılımsal olarak okunamadı.")
         items.append("Bu bilgi için güç kaynağı etiketi kontrol edilmelidir.")
 
-    return items
+    return dedupe_items(items)
 
 
 class HardwareApp(ctk.CTk):
@@ -439,6 +580,7 @@ class HardwareApp(ctk.CTk):
         ssd_items, hdd_items, unknown_storage = get_storage_info()
 
         return {
+            "system": get_system_info(),
             "cpu": get_cpu_info(),
             "motherboard": get_motherboard_info(),
             "gpu": get_gpu_info(),
@@ -453,6 +595,7 @@ class HardwareApp(ctk.CTk):
     def update_ui_with_data(self, data):
         self.clear_content()
 
+        self.add_card("Bilgisayar / BIOS", data["system"])
         self.add_card("İşlemci", data["cpu"])
         self.add_card("Anakart", data["motherboard"])
         self.add_card("Ekran Kartı", data["gpu"])
