@@ -15,6 +15,20 @@ import struct
 import tempfile
 import os
 
+CUSTOM_SOUND_FILE = "b_agiz_sesi.wav"
+
+
+def get_windows_theme_mode():
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return "light" if int(value) == 1 else "dark"
+    except:
+        return "light"
+
 ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("blue")
 
@@ -791,20 +805,39 @@ class HardwareApp(ctk.CTk):
         )
         self.subtitle_label.pack(pady=(0, 30), padx=20)
 
+        self.refresh_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.refresh_frame.pack(pady=10, padx=20, fill="x")
+        self.refresh_frame.grid_columnconfigure(0, weight=1)
+
         self.refresh_button = ctk.CTkButton(
-            self.sidebar,
+            self.refresh_frame,
             text="Bilgileri Yenile",
             command=self.refresh_data
         )
-        self.refresh_button.pack(pady=10, padx=20, fill="x")
+        self.refresh_button.grid(row=0, column=0, sticky="ew")
+
+        self.spinner_label = ctk.CTkLabel(
+            self.refresh_frame,
+            text="",
+            width=26,
+            height=26,
+            font=("Segoe UI", 18, "bold"),
+            text_color="#3B8ED0"
+        )
+        self.spinner_label.grid(row=0, column=1, padx=(8, 0))
+        self.spinner_label.grid_remove()
 
         self.sound_enabled = True
         self.animation_enabled = True
-        self.current_theme = "system"
+        self.current_theme = get_windows_theme_mode()
         self.spinner_running = False
         self.spinner_index = 0
-        self.spinner_symbols = ["◜", "◠", "◝", "◞", "◡", "◟"]
+        self.spinner_angle = 0
+        self.spinner_symbols = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        self.custom_sound_parts = []
+        self.card_sound_index = 0
         self.blup_sound_path = self.create_blup_sound_file()
+        self.load_custom_sound_parts()
 
         self.status_label = ctk.CTkLabel(
             self.sidebar,
@@ -850,7 +883,7 @@ class HardwareApp(ctk.CTk):
 
         self.theme_icon_button = ctk.CTkButton(
             self.top_bar,
-            text="🖥",
+            text="☀" if self.current_theme == "light" else "☾",
             width=38,
             height=38,
             corner_radius=12,
@@ -869,18 +902,14 @@ class HardwareApp(ctk.CTk):
         ctk.set_appearance_mode(mode)
 
     def toggle_theme(self):
-        if self.current_theme == "system":
-            self.current_theme = "light"
-            ctk.set_appearance_mode("light")
-            self.theme_icon_button.configure(text="☀")
-        elif self.current_theme == "light":
+        if self.current_theme == "light":
             self.current_theme = "dark"
             ctk.set_appearance_mode("dark")
             self.theme_icon_button.configure(text="☾")
         else:
-            self.current_theme = "system"
-            ctk.set_appearance_mode("system")
-            self.theme_icon_button.configure(text="🖥")
+            self.current_theme = "light"
+            ctk.set_appearance_mode("light")
+            self.theme_icon_button.configure(text="☀")
 
     def toggle_sound(self):
         self.sound_enabled = not self.sound_enabled
@@ -918,12 +947,140 @@ class HardwareApp(ctk.CTk):
         except:
             return None
 
+    def get_app_folder(self):
+        try:
+            return os.path.dirname(os.path.abspath(__file__))
+        except:
+            return os.getcwd()
+
+    def get_custom_sound_path(self):
+        return os.path.join(self.get_app_folder(), CUSTOM_SOUND_FILE)
+
+    def get_frame_amplitude(self, frame_bytes, sample_width):
+        if not frame_bytes:
+            return 0
+
+        if sample_width == 1:
+            values = [abs(byte - 128) for byte in frame_bytes]
+            return sum(values) / max(1, len(values))
+
+        if sample_width == 2:
+            count = len(frame_bytes) // 2
+            if count <= 0:
+                return 0
+            values = struct.unpack("<" + "h" * count, frame_bytes[:count * 2])
+            return sum(abs(value) for value in values) / count
+
+        return 0
+
+    def load_custom_sound_parts(self):
+        self.custom_sound_parts = []
+        source_path = self.get_custom_sound_path()
+
+        if not os.path.exists(source_path):
+            return
+
+        try:
+            with wave.open(source_path, "rb") as source:
+                channels = source.getnchannels()
+                sample_width = source.getsampwidth()
+                frame_rate = source.getframerate()
+                total_frames = source.getnframes()
+                raw_data = source.readframes(total_frames)
+
+            chunk_ms = 10
+            frames_per_chunk = max(1, int(frame_rate * chunk_ms / 1000))
+            bytes_per_frame = channels * sample_width
+            bytes_per_chunk = frames_per_chunk * bytes_per_frame
+
+            chunks = []
+            amplitudes = []
+
+            for start in range(0, len(raw_data), bytes_per_chunk):
+                chunk = raw_data[start:start + bytes_per_chunk]
+                amplitude = self.get_frame_amplitude(chunk, sample_width)
+                chunks.append((start, start + len(chunk), amplitude))
+                amplitudes.append(amplitude)
+
+            if not amplitudes:
+                return
+
+            max_amplitude = max(amplitudes)
+            if max_amplitude <= 0:
+                return
+
+            threshold = max_amplitude * 0.10
+            min_active_chunks = 2
+            min_silence_chunks = 5
+            padding_chunks = 2
+
+            ranges = []
+            active_start = None
+            silence_count = 0
+            active_count = 0
+
+            for index, (_, _, amplitude) in enumerate(chunks):
+                is_active = amplitude >= threshold
+
+                if is_active:
+                    if active_start is None:
+                        active_start = index
+                        active_count = 0
+                    active_count += 1
+                    silence_count = 0
+                else:
+                    if active_start is not None:
+                        silence_count += 1
+                        if silence_count >= min_silence_chunks:
+                            active_end = index - silence_count
+                            if active_count >= min_active_chunks:
+                                ranges.append((active_start, active_end))
+                            active_start = None
+                            silence_count = 0
+                            active_count = 0
+
+            if active_start is not None and active_count >= min_active_chunks:
+                ranges.append((active_start, len(chunks) - 1))
+
+            temp_folder = os.path.join(tempfile.gettempdir(), "pcdetect_sound_parts")
+            os.makedirs(temp_folder, exist_ok=True)
+
+            for part_index, (start_chunk, end_chunk) in enumerate(ranges, start=1):
+                start_chunk = max(0, start_chunk - padding_chunks)
+                end_chunk = min(len(chunks) - 1, end_chunk + padding_chunks)
+
+                start_byte = chunks[start_chunk][0]
+                end_byte = chunks[end_chunk][1]
+                part_data = raw_data[start_byte:end_byte]
+
+                if not part_data:
+                    continue
+
+                part_path = os.path.join(temp_folder, f"blop_part_{part_index:02d}.wav")
+                with wave.open(part_path, "wb") as part_file:
+                    part_file.setnchannels(channels)
+                    part_file.setsampwidth(sample_width)
+                    part_file.setframerate(frame_rate)
+                    part_file.writeframes(part_data)
+
+                self.custom_sound_parts.append(part_path)
+
+        except:
+            self.custom_sound_parts = []
+
     def play_pop_sound(self):
         if not self.sound_enabled:
             return
 
         try:
-            if self.blup_sound_path and os.path.exists(self.blup_sound_path):
+            if self.custom_sound_parts:
+                sound_path = self.custom_sound_parts[self.card_sound_index % len(self.custom_sound_parts)]
+                self.card_sound_index += 1
+                winsound.PlaySound(
+                    sound_path,
+                    winsound.SND_FILENAME | winsound.SND_ASYNC
+                )
+            elif self.blup_sound_path and os.path.exists(self.blup_sound_path):
                 winsound.PlaySound(
                     self.blup_sound_path,
                     winsound.SND_FILENAME | winsound.SND_ASYNC
@@ -936,6 +1093,8 @@ class HardwareApp(ctk.CTk):
     def start_refresh_spinner(self):
         self.spinner_running = True
         self.spinner_index = 0
+        self.spinner_angle = 0
+        self.spinner_label.grid()
         self.update_refresh_spinner()
 
     def update_refresh_spinner(self):
@@ -943,15 +1102,18 @@ class HardwareApp(ctk.CTk):
             return
 
         symbol = self.spinner_symbols[self.spinner_index % len(self.spinner_symbols)]
-        self.refresh_button.configure(text=f"Yenileniyor {symbol}")
+        self.spinner_label.configure(text=symbol)
         self.spinner_index += 1
-        self.after(80, self.update_refresh_spinner)
+        self.after(50, self.update_refresh_spinner)
 
     def stop_refresh_spinner(self):
         self.spinner_running = False
+        self.spinner_label.grid_remove()
+        self.spinner_label.configure(text="")
         self.refresh_button.configure(text="Bilgileri Yenile")
 
     def refresh_data(self):
+        self.card_sound_index = 0
         self.refresh_button.configure(
             text="Yenileniyor",
             state="disabled"
@@ -1008,19 +1170,16 @@ class HardwareApp(ctk.CTk):
         if not self.animation_enabled:
             return
 
-        padx_values = [46, 40, 34, 28, 22, 17, 13, 10, 8, 6, 5]
-        pady_values = [22, 20, 18, 17, 15, 14, 13, 12, 11, 10, 10]
+        # Tkinter'da en akıcı yöntem: kartın geometrisini büyütmek yerine
+        # sadece içerideki vurguyu kısa süreli değiştirmek.
+        colors = ["#2B6EA6", "#2E5F8F", "transparent"]
 
-        if step >= len(padx_values):
+        if step >= len(colors):
             return
 
         try:
-            card.pack_configure(
-                fill="x",
-                padx=padx_values[step],
-                pady=pady_values[step]
-            )
-            self.after(18, lambda: self.animate_card_entry(card, step + 1))
+            card.configure(border_width=1 if step < 2 else 0, border_color=colors[step])
+            self.after(75, lambda: self.animate_card_entry(card, step + 1))
         except:
             pass
 
@@ -1225,10 +1384,7 @@ class HardwareApp(ctk.CTk):
     def add_card(self, title, items, searchable=True):
         card = ctk.CTkFrame(self.content, corner_radius=18)
 
-        if self.animation_enabled:
-            card.pack(fill="x", padx=46, pady=22)
-        else:
-            card.pack(fill="x", padx=5, pady=10)
+        card.pack(fill="x", padx=5, pady=10)
 
         title_label = ctk.CTkLabel(
             card,

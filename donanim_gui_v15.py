@@ -15,6 +15,18 @@ import struct
 import tempfile
 import os
 
+
+def get_windows_theme_mode():
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return "light" if int(value) == 1 else "dark"
+    except:
+        return "light"
+
 ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("blue")
 
@@ -800,10 +812,10 @@ class HardwareApp(ctk.CTk):
 
         self.sound_enabled = True
         self.animation_enabled = True
-        self.current_theme = "system"
+        self.current_theme = get_windows_theme_mode()
         self.spinner_running = False
         self.spinner_index = 0
-        self.spinner_symbols = ["◜", "◠", "◝", "◞", "◡", "◟"]
+        self.spinner_symbols = ["⟳", "⟳", "⟳", "⟳", "⟳", "⟳", "⟳", "⟳"]
         self.blup_sound_path = self.create_blup_sound_file()
 
         self.status_label = ctk.CTkLabel(
@@ -850,7 +862,7 @@ class HardwareApp(ctk.CTk):
 
         self.theme_icon_button = ctk.CTkButton(
             self.top_bar,
-            text="🖥",
+            text="☀" if self.current_theme == "light" else "☾",
             width=38,
             height=38,
             corner_radius=12,
@@ -869,18 +881,14 @@ class HardwareApp(ctk.CTk):
         ctk.set_appearance_mode(mode)
 
     def toggle_theme(self):
-        if self.current_theme == "system":
-            self.current_theme = "light"
-            ctk.set_appearance_mode("light")
-            self.theme_icon_button.configure(text="☀")
-        elif self.current_theme == "light":
+        if self.current_theme == "light":
             self.current_theme = "dark"
             ctk.set_appearance_mode("dark")
             self.theme_icon_button.configure(text="☾")
         else:
-            self.current_theme = "system"
-            ctk.set_appearance_mode("system")
-            self.theme_icon_button.configure(text="🖥")
+            self.current_theme = "light"
+            ctk.set_appearance_mode("light")
+            self.theme_icon_button.configure(text="☀")
 
     def toggle_sound(self):
         self.sound_enabled = not self.sound_enabled
@@ -943,9 +951,10 @@ class HardwareApp(ctk.CTk):
             return
 
         symbol = self.spinner_symbols[self.spinner_index % len(self.spinner_symbols)]
-        self.refresh_button.configure(text=f"Yenileniyor {symbol}")
+        padding = " " * (self.spinner_index % 4)
+        self.refresh_button.configure(text=f"Yenileniyor {symbol}{padding}")
         self.spinner_index += 1
-        self.after(80, self.update_refresh_spinner)
+        self.after(55, self.update_refresh_spinner)
 
     def stop_refresh_spinner(self):
         self.spinner_running = False

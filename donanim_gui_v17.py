@@ -15,6 +15,18 @@ import struct
 import tempfile
 import os
 
+
+def get_windows_theme_mode():
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return "light" if int(value) == 1 else "dark"
+    except:
+        return "light"
+
 ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("blue")
 
@@ -791,19 +803,35 @@ class HardwareApp(ctk.CTk):
         )
         self.subtitle_label.pack(pady=(0, 30), padx=20)
 
+        self.refresh_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.refresh_frame.pack(pady=10, padx=20, fill="x")
+        self.refresh_frame.grid_columnconfigure(0, weight=1)
+
         self.refresh_button = ctk.CTkButton(
-            self.sidebar,
+            self.refresh_frame,
             text="Bilgileri Yenile",
             command=self.refresh_data
         )
-        self.refresh_button.pack(pady=10, padx=20, fill="x")
+        self.refresh_button.grid(row=0, column=0, sticky="ew")
+
+        self.spinner_label = ctk.CTkLabel(
+            self.refresh_frame,
+            text="",
+            width=26,
+            height=26,
+            font=("Segoe UI", 18, "bold"),
+            text_color="#3B8ED0"
+        )
+        self.spinner_label.grid(row=0, column=1, padx=(8, 0))
+        self.spinner_label.grid_remove()
 
         self.sound_enabled = True
         self.animation_enabled = True
-        self.current_theme = "system"
+        self.current_theme = get_windows_theme_mode()
         self.spinner_running = False
         self.spinner_index = 0
-        self.spinner_symbols = ["◜", "◠", "◝", "◞", "◡", "◟"]
+        self.spinner_angle = 0
+        self.spinner_symbols = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
         self.blup_sound_path = self.create_blup_sound_file()
 
         self.status_label = ctk.CTkLabel(
@@ -850,7 +878,7 @@ class HardwareApp(ctk.CTk):
 
         self.theme_icon_button = ctk.CTkButton(
             self.top_bar,
-            text="🖥",
+            text="☀" if self.current_theme == "light" else "☾",
             width=38,
             height=38,
             corner_radius=12,
@@ -869,18 +897,14 @@ class HardwareApp(ctk.CTk):
         ctk.set_appearance_mode(mode)
 
     def toggle_theme(self):
-        if self.current_theme == "system":
-            self.current_theme = "light"
-            ctk.set_appearance_mode("light")
-            self.theme_icon_button.configure(text="☀")
-        elif self.current_theme == "light":
+        if self.current_theme == "light":
             self.current_theme = "dark"
             ctk.set_appearance_mode("dark")
             self.theme_icon_button.configure(text="☾")
         else:
-            self.current_theme = "system"
-            ctk.set_appearance_mode("system")
-            self.theme_icon_button.configure(text="🖥")
+            self.current_theme = "light"
+            ctk.set_appearance_mode("light")
+            self.theme_icon_button.configure(text="☀")
 
     def toggle_sound(self):
         self.sound_enabled = not self.sound_enabled
@@ -936,6 +960,8 @@ class HardwareApp(ctk.CTk):
     def start_refresh_spinner(self):
         self.spinner_running = True
         self.spinner_index = 0
+        self.spinner_angle = 0
+        self.spinner_label.grid()
         self.update_refresh_spinner()
 
     def update_refresh_spinner(self):
@@ -943,12 +969,14 @@ class HardwareApp(ctk.CTk):
             return
 
         symbol = self.spinner_symbols[self.spinner_index % len(self.spinner_symbols)]
-        self.refresh_button.configure(text=f"Yenileniyor {symbol}")
+        self.spinner_label.configure(text=symbol)
         self.spinner_index += 1
-        self.after(80, self.update_refresh_spinner)
+        self.after(50, self.update_refresh_spinner)
 
     def stop_refresh_spinner(self):
         self.spinner_running = False
+        self.spinner_label.grid_remove()
+        self.spinner_label.configure(text="")
         self.refresh_button.configure(text="Bilgileri Yenile")
 
     def refresh_data(self):
@@ -1008,19 +1036,16 @@ class HardwareApp(ctk.CTk):
         if not self.animation_enabled:
             return
 
-        padx_values = [46, 40, 34, 28, 22, 17, 13, 10, 8, 6, 5]
-        pady_values = [22, 20, 18, 17, 15, 14, 13, 12, 11, 10, 10]
+        # Tkinter'da en akıcı yöntem: kartın geometrisini büyütmek yerine
+        # sadece içerideki vurguyu kısa süreli değiştirmek.
+        colors = ["#2B6EA6", "#2E5F8F", "transparent"]
 
-        if step >= len(padx_values):
+        if step >= len(colors):
             return
 
         try:
-            card.pack_configure(
-                fill="x",
-                padx=padx_values[step],
-                pady=pady_values[step]
-            )
-            self.after(18, lambda: self.animate_card_entry(card, step + 1))
+            card.configure(border_width=1 if step < 2 else 0, border_color=colors[step])
+            self.after(75, lambda: self.animate_card_entry(card, step + 1))
         except:
             pass
 
@@ -1225,10 +1250,7 @@ class HardwareApp(ctk.CTk):
     def add_card(self, title, items, searchable=True):
         card = ctk.CTkFrame(self.content, corner_radius=18)
 
-        if self.animation_enabled:
-            card.pack(fill="x", padx=46, pady=22)
-        else:
-            card.pack(fill="x", padx=5, pady=10)
+        card.pack(fill="x", padx=5, pady=10)
 
         title_label = ctk.CTkLabel(
             card,

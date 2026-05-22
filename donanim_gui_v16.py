@@ -15,6 +15,18 @@ import struct
 import tempfile
 import os
 
+
+def get_windows_theme_mode():
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+        ) as key:
+            value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return "light" if int(value) == 1 else "dark"
+    except:
+        return "light"
+
 ctk.set_appearance_mode("system")
 ctk.set_default_color_theme("blue")
 
@@ -791,19 +803,33 @@ class HardwareApp(ctk.CTk):
         )
         self.subtitle_label.pack(pady=(0, 30), padx=20)
 
+        self.refresh_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        self.refresh_frame.pack(pady=10, padx=20, fill="x")
+        self.refresh_frame.grid_columnconfigure(0, weight=1)
+
         self.refresh_button = ctk.CTkButton(
-            self.sidebar,
+            self.refresh_frame,
             text="Bilgileri Yenile",
             command=self.refresh_data
         )
-        self.refresh_button.pack(pady=10, padx=20, fill="x")
+        self.refresh_button.grid(row=0, column=0, sticky="ew")
+
+        self.spinner_canvas = ctk.CTkCanvas(
+            self.refresh_frame,
+            width=26,
+            height=26,
+            highlightthickness=0,
+            bd=0
+        )
+        self.spinner_canvas.grid(row=0, column=1, padx=(8, 0))
+        self.spinner_canvas.grid_remove()
 
         self.sound_enabled = True
         self.animation_enabled = True
-        self.current_theme = "system"
+        self.current_theme = get_windows_theme_mode()
         self.spinner_running = False
         self.spinner_index = 0
-        self.spinner_symbols = ["◜", "◠", "◝", "◞", "◡", "◟"]
+        self.spinner_angle = 0
         self.blup_sound_path = self.create_blup_sound_file()
 
         self.status_label = ctk.CTkLabel(
@@ -850,7 +876,7 @@ class HardwareApp(ctk.CTk):
 
         self.theme_icon_button = ctk.CTkButton(
             self.top_bar,
-            text="🖥",
+            text="☀" if self.current_theme == "light" else "☾",
             width=38,
             height=38,
             corner_radius=12,
@@ -869,18 +895,14 @@ class HardwareApp(ctk.CTk):
         ctk.set_appearance_mode(mode)
 
     def toggle_theme(self):
-        if self.current_theme == "system":
-            self.current_theme = "light"
-            ctk.set_appearance_mode("light")
-            self.theme_icon_button.configure(text="☀")
-        elif self.current_theme == "light":
+        if self.current_theme == "light":
             self.current_theme = "dark"
             ctk.set_appearance_mode("dark")
             self.theme_icon_button.configure(text="☾")
         else:
-            self.current_theme = "system"
-            ctk.set_appearance_mode("system")
-            self.theme_icon_button.configure(text="🖥")
+            self.current_theme = "light"
+            ctk.set_appearance_mode("light")
+            self.theme_icon_button.configure(text="☀")
 
     def toggle_sound(self):
         self.sound_enabled = not self.sound_enabled
@@ -936,19 +958,55 @@ class HardwareApp(ctk.CTk):
     def start_refresh_spinner(self):
         self.spinner_running = True
         self.spinner_index = 0
+        self.spinner_angle = 0
+        self.spinner_canvas.grid()
         self.update_refresh_spinner()
+
+    def draw_spinner(self):
+        self.spinner_canvas.delete("all")
+
+        # Arka planı boyamıyoruz; canvas yalnızca modern Windows tarzı dönen noktaları çizer.
+        center_x = 13
+        center_y = 13
+        radius = 8
+        dot_count = 6
+        active_index = self.spinner_index % dot_count
+
+        for i in range(dot_count):
+            relative_position = (i - active_index) % dot_count
+            angle = math.radians((360 / dot_count) * i + self.spinner_angle)
+            x = center_x + math.cos(angle) * radius
+            y = center_y + math.sin(angle) * radius
+
+            opacity_scale = 1.0 - (relative_position * 0.12)
+            opacity_scale = max(0.35, opacity_scale)
+            size = 2.35 - (relative_position * 0.13)
+            size = max(1.35, size)
+
+            blue = int(208 + (255 - 208) * (1 - opacity_scale))
+            color = f"#3B8E{blue:02X}"
+
+            self.spinner_canvas.create_oval(
+                x - size,
+                y - size,
+                x + size,
+                y + size,
+                fill=color,
+                outline=color
+            )
 
     def update_refresh_spinner(self):
         if not self.spinner_running:
             return
 
-        symbol = self.spinner_symbols[self.spinner_index % len(self.spinner_symbols)]
-        self.refresh_button.configure(text=f"Yenileniyor {symbol}")
         self.spinner_index += 1
-        self.after(80, self.update_refresh_spinner)
+        self.spinner_angle = (self.spinner_angle + 18) % 360
+        self.draw_spinner()
+        self.after(33, self.update_refresh_spinner)
 
     def stop_refresh_spinner(self):
         self.spinner_running = False
+        self.spinner_canvas.grid_remove()
         self.refresh_button.configure(text="Bilgileri Yenile")
 
     def refresh_data(self):
@@ -1008,8 +1066,10 @@ class HardwareApp(ctk.CTk):
         if not self.animation_enabled:
             return
 
-        padx_values = [46, 40, 34, 28, 22, 17, 13, 10, 8, 6, 5]
-        pady_values = [22, 20, 18, 17, 15, 14, 13, 12, 11, 10, 10]
+        # Daha akıcı olması için geometriyi sürekli büyütmek yerine hafif yerleşim düzeltmesi yapıyoruz.
+        # Bu yöntem Tkinter'da daha az yeniden çizim yapar ve kasma hissini azaltır.
+        padx_values = [14, 11, 8, 6, 5]
+        pady_values = [13, 12, 11, 10, 10]
 
         if step >= len(padx_values):
             return
@@ -1020,7 +1080,7 @@ class HardwareApp(ctk.CTk):
                 padx=padx_values[step],
                 pady=pady_values[step]
             )
-            self.after(18, lambda: self.animate_card_entry(card, step + 1))
+            self.after(75, lambda: self.animate_card_entry(card, step + 1))
         except:
             pass
 
@@ -1226,7 +1286,7 @@ class HardwareApp(ctk.CTk):
         card = ctk.CTkFrame(self.content, corner_radius=18)
 
         if self.animation_enabled:
-            card.pack(fill="x", padx=46, pady=22)
+            card.pack(fill="x", padx=14, pady=13)
         else:
             card.pack(fill="x", padx=5, pady=10)
 
