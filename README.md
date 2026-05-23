@@ -1,13 +1,17 @@
 # Donanım Bilgi Uygulaması
 
-Modern arayüze sahip, çoklu işletim sistemi destekli gelişmiş donanım analiz uygulaması.  
+Modern arayüze sahip, çoklu işletim sistemi destekli gelişmiş donanım analiz uygulaması.
+
 Python + CustomTkinter ile geliştirilmiştir.
 
-## Özellikler
+---
+
+# Özellikler
 
 - Modern ve akıcı arayüz
 - Windows / Linux / macOS desteği
 - Sistem bilgisi görüntüleme
+- Laptop algılama sistemi
 - İşlemci bilgisi
 - Anakart bilgisi
 - Ekran kartı + VRAM bilgisi
@@ -22,12 +26,14 @@ Python + CustomTkinter ile geliştirilmiştir.
 - Ses efektli kart animasyonları
 - Google arama entegrasyonu
 - Sahibinden + Letgo pazar araması
-- Kopyalama butonu
+- Kopyalama sistemi
 - Özel uygulama ikonu
 - Portable ZIP oluşturma desteği
 - Platform bağımsız mimari
 
-## Desteklenen İşletim Sistemleri
+---
+
+# Desteklenen İşletim Sistemleri
 
 | İşletim Sistemi | Destek |
 |---|---|
@@ -35,10 +41,13 @@ Python + CustomTkinter ile geliştirilmiştir.
 | Linux | Büyük Ölçüde Destek |
 | macOS | Büyük Ölçüde Destek |
 
-## Proje Yapısı
+---
+
+# Proje Yapısı
 
 ```text
-proje/
+PCDETECT/
+│
 ├── app/
 │   └── donanim_gui_vFinal.py
 │
@@ -51,6 +60,7 @@ proje/
 │   │   ├── light.svg
 │   │   ├── search.svg
 │   │   ├── copy.svg
+│   │   ├── market.svg
 │   │   ├── volume_up.svg
 │   │   └── volume_off.svg
 │   │
@@ -62,19 +72,23 @@ proje/
 ├── requirements.txt
 ├── README.md
 └── .gitignore
-````
+```
 
-## Kurulum
+---
+
+# Kurulum
 
 Python 3.10 veya üzeri önerilir.
 
-Gerekli paketleri kurmak için:
+Gerekli paketleri kur:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Çalıştırma
+---
+
+# Çalıştırma
 
 Proje ana klasöründeyken:
 
@@ -82,7 +96,9 @@ Proje ana klasöründeyken:
 python app/donanim_gui_vFinal.py
 ```
 
-## Windows EXE Oluşturma
+---
+
+# Windows EXE Oluşturma
 
 Windows üzerinde tek dosyalık `.exe` oluşturmak için:
 
@@ -90,31 +106,41 @@ Windows üzerinde tek dosyalık `.exe` oluşturmak için:
 build.bat
 ```
 
-Bu işlemden sonra çıktı şu klasörde oluşur:
+Çıktı:
 
 ```text
 dist/donanim_gui_vFinal.exe
 ```
 
-## Portable ZIP Oluşturma
+---
 
-Önce `build.bat` çalıştırılmalıdır.
+# Portable ZIP Oluşturma
 
-Daha sonra portable ZIP oluşturmak için:
+Önce:
+
+```bash
+build.bat
+```
+
+çalıştırılmalıdır.
+
+Sonrasında:
 
 ```bash
 make_portable.bat
 ```
 
-Çıktı şu klasörde oluşur:
+Çıktı:
 
 ```text
 release/DonanimBilgi_Portable.zip
 ```
 
-## Manuel PyInstaller Komutu
+---
 
-Windows için manuel build almak istersen:
+# Manuel PyInstaller Build
+
+Windows:
 
 ```bash
 python -m PyInstaller ^
@@ -131,9 +157,7 @@ python -m PyInstaller ^
 app\donanim_gui_vFinal.py
 ```
 
-## Linux Build
-
-Linux için:
+Linux/macOS:
 
 ```bash
 python -m PyInstaller \
@@ -143,24 +167,18 @@ python -m PyInstaller \
 app/donanim_gui_vFinal.py
 ```
 
-## macOS Build
+---
 
-macOS için:
+# Arama Sistemi
 
-```bash
-python -m PyInstaller \
---onefile \
---windowed \
---add-data "assets:assets" \
-app/donanim_gui_vFinal.py
-```
+- **Ara** butonu Google araması açar.
+- **Pazar** butonu aynı anda:
+  - Sahibinden
+  - Letgo
 
-## Arama Sistemi
+sekmesini açar.
 
-* **Ara** butonu Google araması açar.
-* **Pazar** butonu aynı anda Sahibinden ve Letgo araması açar.
-
-Arama metinleri otomatik temizlenir ve sadeleştirilir.
+Arama metinleri otomatik sadeleştirilir.
 
 Örnek:
 
@@ -168,20 +186,53 @@ Arama metinleri otomatik temizlenir ve sadeleştirilir.
 Micro-Star International Co., Ltd.
 ```
 
-şuna dönüştürülür:
+otomatik olarak:
 
 ```text
 MSI
 ```
 
-## Ses Sistemi
+şeklinde optimize edilir.
+
+---
+
+# Laptop Algılama Sistemi
+
+Uygulama cihazın laptop olup olmadığını otomatik algılar.
+
+Laptop cihazlarda:
+
+```text
+Laptop
+```
+
+kartı görünür.
+
+Masaüstü sistemlerde bu kart gizlenir.
+
+Kart içerisinde:
+
+- Marka
+- Model
+- Versiyon
+
+bilgileri gösterilir.
+
+Seri numarası gibi kişisel bilgiler özellikle filtrelenir.
+
+---
+
+# Ses Sistemi
 
 Kart açılışlarında özel ses sistemi kullanılır.
 
-* Fade-in / fade-out desteği
-* Ses patlamasını azaltma
-* Dinamik ses parçalama
-* Thread-safe ses oynatma
+Özellikler:
+
+- Fade-in / fade-out
+- Ses patlaması azaltma
+- Dinamik ses parçalama
+- Thread-safe oynatma
+- Çoklu kart sesi senkronizasyonu
 
 Ses dosyası:
 
@@ -189,37 +240,103 @@ Ses dosyası:
 assets/sesler/b_agiz_sesi.wav
 ```
 
-## İkon Sistemi
+---
 
-SVG ikonları şu klasörde tutulur:
+# İkon Sistemi
+
+SVG ikonları:
 
 ```text
 assets/ikonlar/
 ```
 
+klasöründe tutulur.
+
 Uygulama gerekli durumlarda SVG dosyalarını otomatik PNG’ye dönüştürür.
 
-## Build Dosyaları
+---
 
-### build.bat
+# Build Sistemi
 
-Windows için `.exe` üretir.
+## build.bat
 
-### make_portable.bat
+Windows `.exe` build alır.
 
-Oluşturulan `.exe` dosyasını portable ZIP formatına çevirir.
+## make_portable.bat
 
-## Notlar
+EXE dosyasını portable ZIP’e dönüştürür.
 
-* Windows üzerinde en kapsamlı donanım bilgisi alınır.
-* Linux ve macOS desteği vardır; ancak bazı donanım detayları sistem izinlerine ve kullanılan komutlara göre sınırlı olabilir.
-* PSU marka/model/watt bilgisi çoğu sistemde yazılımsal olarak okunamaz.
-* LibreHardwareMonitor desteği yalnızca Windows tarafında anlamlıdır.
-* `build/`, `dist/`, `release/` ve `*.spec` dosyaları GitHub’a yüklenmemelidir.
+---
 
-## Lisans
+# Teknik Mimari
+
+Uygulama:
+
+- modüler
+- asset tabanlı
+- cross-platform
+- taşınabilir
+- PyInstaller uyumlu
+
+bir yapı üzerine geliştirilmiştir.
+
+Kod mimarisi ileride:
+
+- gerçek zamanlı sensörler
+- benchmark sistemi
+- overlay sistemi
+- AI destekli analiz
+- sürücü kontrol sistemi
+
+gibi özelliklerin eklenmesine uygundur.
+
+---
+
+# Gelecek Planlanan Özellikler
+
+- CPU/GPU sıcaklık sensörleri
+- Gerçek zamanlı RAM/CPU grafikleri
+- FPS monitörü
+- Benchmark sistemi
+- Driver kontrol sistemi
+- Ağ cihazları analizi
+- Çoklu dil desteği
+- Splash screen
+- Otomatik güncelleme sistemi
+
+---
+
+# AI / GPT Development Note
+
+Bu proje AI destekli geliştirilmektedir.
+
+README dosyası:
+- proje mimarisini,
+- klasör yapısını,
+- build sistemini,
+- asset sistemini,
+- uygulama mantığını
+
+koruyacak şekilde hazırlanmıştır.
+
+Projeyi devam ettirecek başka bir AI/GPT:
+- mevcut klasör yapısını bozmamalı,
+- asset yollarını değiştirmemeli,
+- build sistemini kırmamalı,
+- cross-platform yapıyı korumalı,
+- README yapısını mümkün olduğunca sürdürmelidir.
+
+---
+
+# Notlar
+
+- Windows üzerinde en kapsamlı donanım bilgisi alınır.
+- Linux/macOS tarafında bazı bilgiler sistem izinlerine göre sınırlı olabilir.
+- PSU marka/model/watt bilgisi çoğu sistemde yazılımsal olarak okunamaz.
+- LibreHardwareMonitor desteği yalnızca Windows tarafında anlamlıdır.
+
+---
+
+# Lisans
 
 MIT License
-
-```
-```
