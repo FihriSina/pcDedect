@@ -1,10 +1,10 @@
 @echo off
-
 cd /d %~dp0
 
 python -m PyInstaller ^
 --onefile ^
 --windowed ^
+--icon "assets\app.ico" ^
 --hidden-import customtkinter ^
 --hidden-import PIL ^
 --hidden-import cairosvg ^
@@ -14,4 +14,6 @@ python -m PyInstaller ^
 --add-data "assets;assets" ^
 app\donanim_gui_vFinal.py
 
+echo.
+echo Build islemi bitti.
 pause

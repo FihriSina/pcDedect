@@ -51,7 +51,11 @@ except:
 
 ASSET_FOLDER = "assets"
 
-CUSTOM_SOUND_FILE = os.path.join("sesler", "b_agiz_sesi.wav")
+CUSTOM_SOUND_FILE = os.path.join(
+    ASSET_FOLDER,
+    "sesler",
+    "b_agiz_sesi.wav"
+)
 
 ICON_FILES = {
     "dark": os.path.join("ikonlar", "dark.svg"),
@@ -129,11 +133,6 @@ INVALID_VALUES = {
     "00000000",
     "0000000000",
     "ffffffff",
-    "system product name",
-    "system product",
-    "base board product name",
-    "base board version",
-    "o.e.m.",
 }
 
 GENERIC_DEVICE_NAMES = {
@@ -506,156 +505,6 @@ def get_system_info():
         items.append("Bilgi bulunamadı.")
 
     return dedupe_items(items)
-
-
-
-def is_laptop_device():
-    c = get_wmi_connection()
-
-    laptop_chassis_codes = {
-        8,   # Portable
-        9,   # Laptop
-        10,  # Notebook
-        14,  # Sub Notebook
-        30,  # Tablet
-        31,  # Convertible
-        32,  # Detachable
-    }
-
-    if c is not None:
-        try:
-            for enclosure in c.Win32_SystemEnclosure():
-                chassis_types = getattr(enclosure, "ChassisTypes", None)
-
-                if chassis_types:
-                    for chassis_type in chassis_types:
-                        try:
-                            if int(chassis_type) in laptop_chassis_codes:
-                                return True
-                        except:
-                            pass
-        except:
-            pass
-
-        try:
-            batteries = c.Win32_Battery()
-            if batteries:
-                return True
-        except:
-            pass
-
-        return False
-
-    if IS_MACOS:
-        model = run_command(["sysctl", "-n", "hw.model"]).lower()
-        return "macbook" in model
-
-    if IS_LINUX:
-        chassis_type = run_command(
-            ["bash", "-lc", "cat /sys/class/dmi/id/chassis_type 2>/dev/null"]
-        )
-
-        try:
-            return int(chassis_type.strip()) in laptop_chassis_codes
-        except:
-            pass
-
-        product_name = run_command(
-            ["bash", "-lc", "cat /sys/class/dmi/id/product_name 2>/dev/null"]
-        ).lower()
-
-        laptop_words = [
-            "laptop", "notebook", "thinkpad", "ideapad", "vivobook",
-            "zenbook", "legion", "victus", "omen", "pavilion", "inspiron",
-            "latitude", "predator", "nitro", "macbook"
-        ]
-        return any(word in product_name for word in laptop_words)
-
-    return False
-
-
-def clean_laptop_model_text(text):
-    text = clean_text(text)
-
-    replacements = {
-        "LENOVO": "Lenovo",
-        "ASUSTeK COMPUTER INC.": "ASUS",
-        "ASUSTeK COMPUTER": "ASUS",
-        "Micro-Star International Co., Ltd.": "MSI",
-        "Micro-Star International": "MSI",
-        "Dell Inc.": "Dell",
-    }
-
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-
-    removable = [
-        "To Be Filled By O.E.M.",
-        "System Product Name",
-        "System Version",
-        "Default String",
-        "Not Applicable",
-    ]
-
-    for value in removable:
-        text = text.replace(value, "")
-
-    return " ".join(text.split())
-
-
-def get_laptop_info():
-    items = []
-
-    if not is_laptop_device():
-        return items
-
-    c = get_wmi_connection()
-
-    if c is not None:
-        try:
-            for system in c.Win32_ComputerSystem():
-                parts = []
-                add_if_valid(parts, getattr(system, "Manufacturer", None))
-                add_if_valid(parts, getattr(system, "Model", None))
-
-                if parts:
-                    items.append(clean_laptop_model_text(" ".join(parts)))
-        except:
-            pass
-
-        try:
-            for product in c.Win32_ComputerSystemProduct():
-                parts = []
-                add_if_valid(parts, getattr(product, "Vendor", None))
-                add_if_valid(parts, getattr(product, "Name", None))
-                add_if_valid(parts, getattr(product, "Version", None))
-
-                if parts:
-                    items.append(clean_laptop_model_text(" ".join(parts)))
-        except:
-            pass
-
-        return dedupe_items([item for item in items if is_valid_value(item)])
-
-    if IS_MACOS:
-        model = run_command(["sysctl", "-n", "hw.model"])
-        if model:
-            items.append(clean_laptop_model_text(f"Apple {model}"))
-
-    elif IS_LINUX:
-        vendor = run_command(["bash", "-lc", "cat /sys/class/dmi/id/sys_vendor 2>/dev/null"])
-        product = run_command(["bash", "-lc", "cat /sys/class/dmi/id/product_name 2>/dev/null"])
-        version = run_command(["bash", "-lc", "cat /sys/class/dmi/id/product_version 2>/dev/null"])
-
-        parts = []
-        add_if_valid(parts, vendor)
-        add_if_valid(parts, product)
-        add_if_valid(parts, version)
-
-        if parts:
-            items.append(clean_laptop_model_text(" ".join(parts)))
-
-    return dedupe_items([item for item in items if is_valid_value(item)])
 
 
 def get_cpu_info():
@@ -1432,8 +1281,7 @@ class HardwareApp(ctk.CTk):
         try:
             return sys._MEIPASS
         except:
-            app_folder = self.get_app_folder()
-            return os.path.dirname(app_folder)
+            return self.get_app_folder()
 
     def get_asset_path(self, file_name):
         return os.path.join(self.get_resource_base_folder(), ASSET_FOLDER, file_name)
@@ -1844,12 +1692,6 @@ class HardwareApp(ctk.CTk):
             self.add_card_progressively("Bilgisayar / BIOS", system_items, delay=delay)
             delay += first_pause
 
-            laptop_items = get_laptop_info()
-
-            if laptop_items:
-                self.add_card_progressively("Laptop", laptop_items, delay=delay)
-                delay += step_delay
-
             self.after(0, lambda: self.status_label.configure(text="İşlemci bilgisi yükleniyor..."))
             cpu_items = get_cpu_info()
             self.add_card_progressively("İşlemci", cpu_items, delay=delay)
@@ -1937,7 +1779,6 @@ class HardwareApp(ctk.CTk):
 
         return {
             "system": get_system_info(),
-            "laptop": get_laptop_info(),
             "cpu": get_cpu_info(),
             "motherboard": get_motherboard_info(),
             "gpu": gpu_items,
@@ -1956,10 +1797,6 @@ class HardwareApp(ctk.CTk):
         self.clear_content()
 
         self.add_card("Bilgisayar / BIOS", data["system"])
-
-        if data.get("laptop"):
-            self.add_card("Laptop", data["laptop"])
-
         self.add_card("İşlemci", data["cpu"])
         self.add_card("Anakart", data["motherboard"])
         self.add_card("Ekran Kartı", data["gpu"])

@@ -23,6 +23,8 @@ Python + CustomTkinter ile geliştirilmiştir.
 - Google arama entegrasyonu
 - Sahibinden + Letgo pazar araması
 - Kopyalama butonu
+- Özel uygulama ikonu
+- Portable ZIP oluşturma desteği
 - Platform bağımsız mimari
 
 ## Desteklenen İşletim Sistemleri
@@ -37,19 +39,29 @@ Python + CustomTkinter ile geliştirilmiştir.
 
 ```text
 proje/
-├── donanim_gui_vFinal.py
+├── app/
+│   └── donanim_gui_vFinal.py
+│
+├── assets/
+│   ├── app.ico
+│   ├── app_logo.png
+│   │
+│   ├── ikonlar/
+│   │   ├── dark.svg
+│   │   ├── light.svg
+│   │   ├── search.svg
+│   │   ├── copy.svg
+│   │   ├── volume_up.svg
+│   │   └── volume_off.svg
+│   │
+│   └── sesler/
+│       └── b_agiz_sesi.wav
+│
+├── build.bat
+├── make_portable.bat
 ├── requirements.txt
 ├── README.md
-├── .gitignore
-│
-└── ses_ikon/
-    ├── dark.svg
-    ├── light.svg
-    ├── search.svg
-    ├── copy.svg
-    ├── volume_up.svg
-    ├── volume_off.svg
-    └── b_agiz_sesi.wav
+└── .gitignore
 ````
 
 ## Kurulum
@@ -64,34 +76,83 @@ pip install -r requirements.txt
 
 ## Çalıştırma
 
+Proje ana klasöründeyken:
+
 ```bash
-python donanim_gui_vFinal.py
+python app/donanim_gui_vFinal.py
 ```
 
 ## Windows EXE Oluşturma
 
+Windows üzerinde tek dosyalık `.exe` oluşturmak için:
+
 ```bash
-pyinstaller --onefile --windowed ^
---add-data "ses_ikon;ses_ikon" ^
-donanim_gui_vFinal.py
+build.bat
+```
+
+Bu işlemden sonra çıktı şu klasörde oluşur:
+
+```text
+dist/donanim_gui_vFinal.exe
+```
+
+## Portable ZIP Oluşturma
+
+Önce `build.bat` çalıştırılmalıdır.
+
+Daha sonra portable ZIP oluşturmak için:
+
+```bash
+make_portable.bat
+```
+
+Çıktı şu klasörde oluşur:
+
+```text
+release/DonanimBilgi_Portable.zip
+```
+
+## Manuel PyInstaller Komutu
+
+Windows için manuel build almak istersen:
+
+```bash
+python -m PyInstaller ^
+--onefile ^
+--windowed ^
+--icon "assets\app.ico" ^
+--hidden-import customtkinter ^
+--hidden-import PIL ^
+--hidden-import cairosvg ^
+--collect-submodules customtkinter ^
+--collect-submodules PIL ^
+--collect-submodules cairosvg ^
+--add-data "assets;assets" ^
+app\donanim_gui_vFinal.py
 ```
 
 ## Linux Build
 
+Linux için:
+
 ```bash
-pyinstaller --onefile \
+python -m PyInstaller \
+--onefile \
 --windowed \
---add-data "ses_ikon:ses_ikon" \
-donanim_gui_vFinal.py
+--add-data "assets:assets" \
+app/donanim_gui_vFinal.py
 ```
 
 ## macOS Build
 
+macOS için:
+
 ```bash
-pyinstaller --onefile \
+python -m PyInstaller \
+--onefile \
 --windowed \
---add-data "ses_ikon:ses_ikon" \
-donanim_gui_vFinal.py
+--add-data "assets:assets" \
+app/donanim_gui_vFinal.py
 ```
 
 ## Arama Sistemi
@@ -125,13 +186,28 @@ Kart açılışlarında özel ses sistemi kullanılır.
 Ses dosyası:
 
 ```text
-ses_ikon/b_agiz_sesi.wav
+assets/sesler/b_agiz_sesi.wav
 ```
 
 ## İkon Sistemi
 
-SVG ikonları `ses_ikon` klasöründe tutulur.
+SVG ikonları şu klasörde tutulur:
+
+```text
+assets/ikonlar/
+```
+
 Uygulama gerekli durumlarda SVG dosyalarını otomatik PNG’ye dönüştürür.
+
+## Build Dosyaları
+
+### build.bat
+
+Windows için `.exe` üretir.
+
+### make_portable.bat
+
+Oluşturulan `.exe` dosyasını portable ZIP formatına çevirir.
 
 ## Notlar
 
@@ -139,6 +215,7 @@ Uygulama gerekli durumlarda SVG dosyalarını otomatik PNG’ye dönüştürür.
 * Linux ve macOS desteği vardır; ancak bazı donanım detayları sistem izinlerine ve kullanılan komutlara göre sınırlı olabilir.
 * PSU marka/model/watt bilgisi çoğu sistemde yazılımsal olarak okunamaz.
 * LibreHardwareMonitor desteği yalnızca Windows tarafında anlamlıdır.
+* `build/`, `dist/`, `release/` ve `*.spec` dosyaları GitHub’a yüklenmemelidir.
 
 ## Lisans
 
